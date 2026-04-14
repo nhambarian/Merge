@@ -94,7 +94,11 @@ async function loadFile(file, target) {
   markDropZoneLoaded(target);
   resetPreview();
   updateControls();
-  setStatus(`${target.toUpperCase()} loaded: ${file.name}`, false);
+  const timelineMessage =
+    parsed.timelineMode === "synthetic"
+      ? "No explicit timestamps found, using ordered sequence positions."
+      : "Detected explicit timestamps.";
+  setStatus(`${target.toUpperCase()} loaded: ${file.name}. ${timelineMessage}`, false);
 }
 
 function isXmlFile(file) {
@@ -117,14 +121,13 @@ function parseXmlFile(xmlText, fileName) {
 
   const points = extractTimedPoints(root);
   if (points.length === 0) {
-    throw new Error(
-      `"${fileName}" does not contain timed elements. Include attributes like time/start/timestamp.`
-    );
+    throw new Error(`"${fileName}" has no mergeable child elements under <${root.tagName}>.`);
   }
 
-  points.sort((a, b) => a.time - b.time);
+  points.sort((a, b) => (a.time === b.time ? a.order - b.order : a.time - b.time));
   const duration = points[points.length - 1].time;
   const lineCount = xmlText.split(/\r?\n/).length;
+  const timelineMode = points.some((point) => point.explicitTime) ? "timed" : "synthetic";
 
   return {
     fileName,
@@ -133,46 +136,97 @@ function parseXmlFile(xmlText, fileName) {
     points,
     duration,
     lineCount,
+    timelineMode,
   };
 }
 
 function extractTimedPoints(root) {
-  const nodes = Array.from(root.querySelectorAll("*"));
+  const nodes = Array.from(root.children);
+  const serializer = new XMLSerializer();
   const points = [];
   nodes.forEach((node) => {
     const time = getTimeFromElement(node);
-    if (time === null) {
-      return;
-    }
     points.push({
       time,
+      explicitTime: time !== null,
+      order: points.length,
       nodeName: node.tagName,
-      xml: new XMLSerializer().serializeToString(node),
+      xml: serializer.serializeToString(node),
     });
   });
+
+  if (points.length === 0) {
+    return [];
+  }
+
+  const hasExplicitTimes = points.some((point) => point.explicitTime);
+  if (!hasExplicitTimes) {
+    return points.map((point, index) => ({
+      ...point,
+      time: index,
+    }));
+  }
+
+  let lastKnown = 0;
+  let hasSeenKnown = false;
+  points.forEach((point) => {
+    if (point.time !== null) {
+      hasSeenKnown = true;
+      lastKnown = point.time;
+      return;
+    }
+    point.time = hasSeenKnown ? lastKnown + 0.001 : 0;
+    lastKnown = point.time;
+  });
+
   return points;
 }
 
 function getTimeFromElement(node) {
-  const attrs = ["time", "start", "timestamp", "t", "begin"];
-  for (const attr of attrs) {
-    const val = node.getAttribute(attr);
-    if (val === null) {
+  const directAttributeKeys = ["time", "start", "timestamp", "t", "begin", "offset", "pts"];
+  for (const attr of directAttributeKeys) {
+    const value = node.getAttribute(attr);
+    if (value === null) {
       continue;
     }
-    const parsed = parseFlexibleTime(val);
+    const parsed = parseFlexibleTime(value);
     if (parsed !== null) {
       return parsed;
     }
   }
+
+  const fuzzyAttributeKeywords = ["time", "start", "begin", "stamp", "offset", "pts", "sec", "ms"];
+  for (const attribute of Array.from(node.attributes)) {
+    const lowerName = attribute.name.toLowerCase();
+    if (!fuzzyAttributeKeywords.some((keyword) => lowerName.includes(keyword))) {
+      continue;
+    }
+    const parsed = parseFlexibleTime(attribute.value);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  const timeChildKeywords = ["time", "start", "begin", "timestamp", "offset", "pts", "sec", "ms"];
+  for (const child of Array.from(node.children)) {
+    const lowerTag = child.tagName.toLowerCase();
+    if (!timeChildKeywords.some((keyword) => lowerTag.includes(keyword))) {
+      continue;
+    }
+    const parsed = parseFlexibleTime(child.textContent || "");
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
   return null;
 }
 
 function parseFlexibleTime(input) {
-  if (typeof input !== "string") {
+  if (typeof input !== "string" && typeof input !== "number") {
     return null;
   }
-  const value = input.trim();
+  const value = String(input).trim().replace(",", ".");
   if (!value) {
     return null;
   }
@@ -184,6 +238,40 @@ function parseFlexibleTime(input) {
       return null;
     }
     return Math.max(0, number);
+  }
+
+  // Unit-based values, such as 1500ms, 2.5s, 1m, 1.5h
+  const unitMatch = value.match(/^(-?\d+(?:\.\d+)?)\s*(ms|msec|s|sec|secs|m|min|mins|h|hr|hrs)$/i);
+  if (unitMatch) {
+    const amount = Number(unitMatch[1]);
+    if (!Number.isFinite(amount)) {
+      return null;
+    }
+    const unit = unitMatch[2].toLowerCase();
+    if (unit === "ms" || unit === "msec") {
+      return Math.max(0, amount / 1000);
+    }
+    if (unit === "s" || unit === "sec" || unit === "secs") {
+      return Math.max(0, amount);
+    }
+    if (unit === "m" || unit === "min" || unit === "mins") {
+      return Math.max(0, amount * 60);
+    }
+    return Math.max(0, amount * 3600);
+  }
+
+  // ISO-8601 duration style (e.g. PT1H2M3.5S)
+  const isoMatch = value.match(
+    /^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/i
+  );
+  if (isoMatch) {
+    const hours = Number(isoMatch[1] || 0);
+    const minutes = Number(isoMatch[2] || 0);
+    const seconds = Number(isoMatch[3] || 0);
+    if (![hours, minutes, seconds].every((n) => Number.isFinite(n))) {
+      return null;
+    }
+    return Math.max(0, hours * 3600 + minutes * 60 + seconds);
   }
 
   // HH:MM:SS(.mmm) or MM:SS(.mmm)
@@ -222,9 +310,11 @@ function formatTime(seconds) {
 
 function updateFileMeta(target, parsed) {
   const metaElement = target === "xml1" ? elements.xml1Meta : elements.xml2Meta;
+  const timelineLabel =
+    parsed.timelineMode === "timed" ? "Timeline: explicit timestamps" : "Timeline: auto sequence";
   metaElement.textContent = `${parsed.fileName} | Root: <${parsed.rootName}> | Timed nodes: ${
     parsed.points.length
-  } | Duration: ${formatTime(parsed.duration)}`;
+  } | Duration: ${formatTime(parsed.duration)} | ${timelineLabel}`;
 }
 
 function markDropZoneLoaded(target) {
@@ -295,7 +385,9 @@ function renderTimelineSummary() {
   }
   elements.timelineSummary.textContent = `XML File 1 duration: ${formatTime(
     state.xml1.duration
-  )}. XML File 2 duration: ${formatTime(state.xml2.duration)}. XML File 2 will start at ${formatTime(
+  )} (${state.xml1.timelineMode === "timed" ? "explicit timestamps" : "auto sequence"}). XML File 2 duration: ${formatTime(
+    state.xml2.duration
+  )} (${state.xml2.timelineMode === "timed" ? "explicit timestamps" : "auto sequence"}). XML File 2 will start at ${formatTime(
     state.insertionTime
   )} in XML File 1.`;
 }
