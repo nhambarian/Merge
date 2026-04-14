@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XML File Merger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>&#x1F4C1; XML File Merger</h1>
+      <p class="subtitle">
+        Merge two XML files by selecting a time cutoff.<br />
+        Elements from <strong>File 1</strong> that occur <em>before</em> the
+        selected time and elements from <strong>File 2</strong> that occur
+        <em>at or after</em> the selected time will be combined into a single
+        merged XML file.
+      </p>
+    </header>
+
+    {% if errors %}
+    <div class="error-box" role="alert">
+      <strong>Please fix the following errors:</strong>
+      <ul>
+        {% for error in errors %}
+        <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/merge" enctype="multipart/form-data" novalidate>
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label for="file1">
+            <span class="label-icon">&#x1F4C4;</span> First XML File
+            <span class="required">*</span>
+          </label>
+          <input
+            type="file"
+            id="file1"
+            name="file1"
+            accept=".xml,application/xml,text/xml"
+            required
+          />
+          <p class="hint">
+            Elements with timestamps <strong>before</strong> the cutoff time
+            will be taken from this file.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label for="file2">
+            <span class="label-icon">&#x1F4C4;</span> Second XML File
+            <span class="required">*</span>
+          </label>
+          <input
+            type="file"
+            id="file2"
+            name="file2"
+            accept=".xml,application/xml,text/xml"
+            required
+          />
+          <p class="hint">
+            Elements with timestamps <strong>at or after</strong> the cutoff
+            time will be taken from this file.
+          </p>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="cutoff_time">
+            <span class="label-icon">&#x23F0;</span> Cutoff Date &amp; Time
+            <span class="required">*</span>
+          </label>
+          <input
+            type="datetime-local"
+            id="cutoff_time"
+            name="cutoff_time"
+            required
+          />
+          <p class="hint">
+            The point in time that divides the two XML files. Timestamps before
+            this value come from File 1; timestamps at or after come from File 2.
+          </p>
+        </div>
+
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn-merge">
+          &#x2728; Merge &amp; Download
+        </button>
+      </div>
+    </form>
+
+    <section class="instructions">
+      <h2>How it works</h2>
+      <ol>
+        <li>Upload two XML files that contain child elements with time values.</li>
+        <li>
+          Each child element must have a time value in one of these forms:
+          <ul>
+            <li>
+              An attribute named <code>time</code>, <code>timestamp</code>,
+              <code>datetime</code>, or <code>date</code>.
+            </li>
+            <li>A child element with one of those tag names.</li>
+          </ul>
+        </li>
+        <li>Select the cutoff date and time.</li>
+        <li>Click <strong>Merge &amp; Download</strong> to receive the merged XML.</li>
+      </ol>
+
+      <h2>Supported date/time formats</h2>
+      <ul class="formats">
+        <li><code>2024-01-15T14:30:00</code> (ISO 8601)</li>
+        <li><code>2024-01-15T14:30:00.000</code> (ISO 8601 with milliseconds)</li>
+        <li><code>2024-01-15 14:30:00</code></li>
+        <li><code>2024-01-15 14:30</code></li>
+        <li><code>2024-01-15T14:30</code></li>
+        <li><code>2024-01-15</code></li>
+        <li><code>14:30:00</code></li>
+        <li><code>14:30</code></li>
+      </ul>
+
+      <h2>Example XML structure</h2>
+      <pre><code>&lt;events&gt;
+  &lt;event time="2024-01-15T08:00:00"&gt;Morning briefing&lt;/event&gt;
+  &lt;event time="2024-01-15T12:00:00"&gt;Lunch meeting&lt;/event&gt;
+  &lt;event time="2024-01-15T18:00:00"&gt;Evening debrief&lt;/event&gt;
+&lt;/events&gt;</code></pre>
+    </section>
+
+    <footer>
+      <p>XML File Merger &mdash; merge two XML files by time</p>
+    </footer>
+  </div>
+</body>
+</html>
