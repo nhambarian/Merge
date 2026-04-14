@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XML Merge Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>XML Merge Dashboard</h1>
+      <p>
+        Drag and drop two XML files, choose when XML File 2 should start inside XML File 1,
+        preview the merged XML with source highlighting, and export the result.
+      </p>
+    </header>
+
+    <section class="step-card" id="step-1">
+      <h2>Step 1: Upload two XML files</h2>
+      <div class="drop-grid">
+        <div class="drop-wrapper">
+          <h3>XML File 1</h3>
+          <div class="drop-zone" data-target="xml1">
+            <p>Drop XML File 1 here or click to select</p>
+            <input type="file" id="xml1-input" accept=".xml,text/xml,application/xml" hidden />
+          </div>
+          <div class="file-meta" id="xml1-meta">No file selected.</div>
+        </div>
+
+        <div class="drop-wrapper">
+          <h3>XML File 2</h3>
+          <div class="drop-zone" data-target="xml2">
+            <p>Drop XML File 2 here or click to select</p>
+            <input type="file" id="xml2-input" accept=".xml,text/xml,application/xml" hidden />
+          </div>
+          <div class="file-meta" id="xml2-meta">No file selected.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="step-card" id="step-2">
+      <h2>Step 2: Choose when XML File 2 starts</h2>
+      <p class="step-help">
+        Select a time point inside XML File 1. XML File 1 is used from the beginning until this
+        time, then XML File 2 starts at this designated time and runs to the end of XML File 2.
+      </p>
+
+      <div class="time-controls">
+        <label for="insertion-slider">Start time in XML File 1</label>
+        <input type="range" id="insertion-slider" min="0" max="1" step="0.001" value="0" disabled />
+        <div class="time-input-row">
+          <input
+            type="text"
+            id="insertion-time"
+            value="00:00:00.000"
+            placeholder="HH:MM:SS.mmm or seconds"
+            disabled
+          />
+          <button id="apply-time" type="button" disabled>Apply Time</button>
+        </div>
+      </div>
+
+      <div class="timeline-summary" id="timeline-summary">
+        Upload both XML files to enable timeline alignment.
+      </div>
+    </section>
+
+    <section class="step-card" id="step-3">
+      <h2>Step 3: Preview and export merged XML</h2>
+      <div class="action-row">
+        <button id="merge-button" type="button" disabled>Generate Merge Preview</button>
+        <button id="export-button" type="button" disabled>Export Merged XML</button>
+      </div>
+
+      <div class="preview-legend">
+        <span class="legend-chip xml1-chip">XML File 1 (light blue)</span>
+        <span class="legend-chip xml2-chip">XML File 2 (light red)</span>
+      </div>
+
+      <div class="preview-window" id="preview-window">
+        <div class="placeholder">Merged XML preview will appear here.</div>
+      </div>
+    </section>
+
+    <div class="status" id="status"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
