@@ -14,6 +14,8 @@ const BROADCAST_DF = {
 };
 
 const DAY_SECONDS = 24 * 60 * 60;
+const XML1_WINDOW_START_SECONDS = 9 * 60 * 60;
+const XML2_WINDOW_END_SECONDS = 9 * 60 * 60;
 
 const elements = {
   dropZones: document.querySelectorAll(".drop-zone"),
@@ -485,6 +487,19 @@ function normalizeDaySeconds(seconds) {
   return ((seconds % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS;
 }
 
+function clockRangeContains(clockSeconds, startSeconds, endSeconds) {
+  const clock = normalizeDaySeconds(clockSeconds);
+  const start = normalizeDaySeconds(startSeconds);
+  const end = normalizeDaySeconds(endSeconds);
+  if (start === end) {
+    return true;
+  }
+  if (start < end) {
+    return clock >= start && clock < end;
+  }
+  return clock >= start || clock < end;
+}
+
 function toRelativeScheduleSeconds(absoluteSeconds, anchorSeconds) {
   return normalizeDaySeconds(absoluteSeconds - anchorSeconds);
 }
@@ -523,6 +538,13 @@ function formatDisplayTime(seconds, parsedFile) {
     return formatDropFrame59_94(absolute);
   }
   return formatDropFrame59_94(seconds);
+}
+
+function getPointClockSeconds(point, parsedFile) {
+  if (parsedFile?.mode === "bxf-asrun" && parsedFile.hasAnchor) {
+    return toAbsoluteClockSeconds(point.time, parsedFile.anchorSeconds);
+  }
+  return point.time;
 }
 
 function updateFileMeta(target, parsed) {
