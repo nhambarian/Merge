@@ -190,7 +190,7 @@ function tryParseBxfAsRun(doc) {
   const points = asRunNodes.map((node, index) => {
     const startTimecode = findAsRunStartTimecode(node);
     const absoluteStart = startTimecode ? parseFlexibleTime(startTimecode) : null;
-    const zeroTimecode = isZeroTimecode(startTimecode);
+    const zeroTimecode = isZeroSmpteTimecode(startTimecode);
     const relativeStart =
       absoluteStart === null
         ? null
