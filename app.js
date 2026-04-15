@@ -736,9 +736,8 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
   const xml1Prefix = xml1File.points.filter((point) =>
     isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
   );
-  const xml2Suffix = xml2File.points.filter(
-    (point) =>
-      point.explicitTime && isWithinRelativeWindow(point.time, xml2WindowStart, xml2WindowEnd)
+  const xml2Suffix = xml2File.points.filter((point) =>
+    isWithinRelativeWindow(point.time, xml2WindowStart, xml2WindowEnd)
   );
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
