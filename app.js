@@ -6,6 +6,13 @@ const state = {
   mergedSegments: [],
 };
 
+const BROADCAST_DF = {
+  frameRate: 59.94,
+  nominalFps: 60,
+  dropFrames: 4,
+  minutesPerDay: 24 * 60,
+};
+
 const elements = {
   dropZones: document.querySelectorAll(".drop-zone"),
   xml1Input: document.getElementById("xml1-input"),
@@ -231,6 +238,11 @@ function parseFlexibleTime(input) {
     return null;
   }
 
+  const dropFrameParsed = parseDropFrame59_94(value);
+  if (dropFrameParsed !== null) {
+    return dropFrameParsed;
+  }
+
   // Numeric seconds, for example: 12.5
   if (/^-?\d+(\.\d+)?$/.test(value)) {
     const number = Number(value);
@@ -294,18 +306,81 @@ function parseFlexibleTime(input) {
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) {
-    return "00:00:00.000";
+    return "00:00:00;00";
   }
-  const safe = Math.max(0, seconds);
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const secs = safe % 60;
-  const wholeSecs = Math.floor(secs);
-  const millis = Math.round((secs - wholeSecs) * 1000);
-  const normalizedMillis = String(millis).padStart(3, "0");
+  return formatDropFrame59_94(seconds);
+}
+
+function parseDropFrame59_94(value) {
+  const match = value.match(/^(\d{1,2}):([0-5]\d):([0-5]\d)([:;])([0-5]\d)$/);
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  const separator = match[4];
+  const frames = Number(match[5]);
+  if (![hours, minutes, seconds, frames].every((n) => Number.isInteger(n))) {
+    return null;
+  }
+
+  if (separator === ";") {
+    const isTenthMinute = minutes % 10 === 0;
+    if (!isTenthMinute && seconds === 0 && frames < BROADCAST_DF.dropFrames) {
+      return null;
+    }
+  }
+
+  const totalMinutes = hours * 60 + minutes;
+  const nominalFrameNumber =
+    (hours * 3600 + minutes * 60 + seconds) * BROADCAST_DF.nominalFps + frames;
+
+  if (separator === ";") {
+    const dropped =
+      BROADCAST_DF.dropFrames * (totalMinutes - Math.floor(totalMinutes / 10));
+    return Math.max(0, (nominalFrameNumber - dropped) / BROADCAST_DF.frameRate);
+  }
+
+  return Math.max(0, nominalFrameNumber / BROADCAST_DF.frameRate);
+}
+
+function formatDropFrame59_94(secondsValue) {
+  const frameCount = Math.max(0, Math.round(secondsValue * BROADCAST_DF.frameRate));
+  const nominalFps = BROADCAST_DF.nominalFps;
+  const dropFrames = BROADCAST_DF.dropFrames;
+  const framesPerMinuteNominal = nominalFps * 60;
+  const framesPerMinuteDropped = framesPerMinuteNominal - dropFrames;
+  const framesPerTenMinutes = framesPerMinuteNominal + framesPerMinuteDropped * 9;
+  const framesPer24Hours = framesPerTenMinutes * 144;
+
+  let remaining = frameCount % framesPer24Hours;
+  const tenMinuteBlocks = Math.floor(remaining / framesPerTenMinutes);
+  remaining %= framesPerTenMinutes;
+
+  let minuteInBlock = 0;
+  let frameOfMinute = 0;
+  if (remaining < framesPerMinuteNominal) {
+    minuteInBlock = 0;
+    frameOfMinute = remaining;
+  } else {
+    remaining -= framesPerMinuteNominal;
+    minuteInBlock = 1 + Math.floor(remaining / framesPerMinuteDropped);
+    frameOfMinute = remaining % framesPerMinuteDropped;
+  }
+
+  const totalMinutes = tenMinuteBlocks * 10 + minuteInBlock;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const labelFrameOfMinute =
+    minuteInBlock === 0 ? frameOfMinute : frameOfMinute + dropFrames;
+  const secs = Math.floor(labelFrameOfMinute / nominalFps);
+  const frames = labelFrameOfMinute % nominalFps;
+
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(
-    wholeSecs
-  ).padStart(2, "0")}.${normalizedMillis}`;
+    secs
+  ).padStart(2, "0")};${String(frames).padStart(2, "0")}`;
 }
 
 function updateFileMeta(target, parsed) {
@@ -363,7 +438,7 @@ function onSliderChange() {
 function onApplyTime() {
   const parsed = parseFlexibleTime(elements.insertionTime.value);
   if (parsed === null) {
-    setStatus("Invalid insertion time. Use HH:MM:SS.mmm or numeric seconds.", true);
+    setStatus("Invalid insertion time. Use HH:MM:SS;FF (59.94 DF) or numeric seconds.", true);
     return;
   }
 

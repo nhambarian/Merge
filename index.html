@@ -44,6 +44,7 @@
       <p class="step-help">
         Select a time point inside XML File 1. XML File 1 is used from the beginning until this
         time, then XML File 2 starts at this designated time and runs to the end of XML File 2.
+        Reference time uses broadcast drop-frame at 59.94 fps.
       </p>
 
       <div class="time-controls">
@@ -53,8 +54,8 @@
           <input
             type="text"
             id="insertion-time"
-            value="00:00:00.000"
-            placeholder="HH:MM:SS.mmm or seconds"
+            value="00:00:00;00"
+            placeholder="HH:MM:SS;FF (59.94 DF) or seconds"
             disabled
           />
           <button id="apply-time" type="button" disabled>Apply Time</button>

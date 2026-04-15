@@ -32,6 +32,7 @@ The dashboard reads time from element attributes in either file using one of:
 Supported time formats:
 
 - Numeric seconds (example: `12.5`)
+- Broadcast timecode `HH:MM:SS;FF` (drop-frame, 59.94 fps)
 - `MM:SS(.mmm)`
 - `HH:MM:SS(.mmm)`
 
