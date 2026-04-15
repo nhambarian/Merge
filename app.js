@@ -912,8 +912,8 @@ function exportMergedXml() {
     return;
   }
 
-  const fileName1 = state.xml1?.fileName.replace(/\.xml$/i, "") || "xml1";
-  const fileName2 = state.xml2?.fileName.replace(/\.xml$/i, "") || "xml2";
+  const fileName1 = stripSourceSuffix(state.xml1?.fileName) || "xml1";
+  const fileName2 = stripSourceSuffix(state.xml2?.fileName) || "xml2";
   const outputName = `${fileName1}_plus_${fileName2}_merged.xml`;
   const blob = new Blob([state.mergedText], { type: "application/xml" });
   const url = URL.createObjectURL(blob);
@@ -925,6 +925,15 @@ function exportMergedXml() {
   link.remove();
   URL.revokeObjectURL(url);
   setStatus(`Exported merged XML as ${outputName}.`, false, true);
+}
+
+function stripSourceSuffix(fileName) {
+  if (!fileName) {
+    return "";
+  }
+  return fileName
+    .replace(/\.xml$/i, "")
+    .replace(/_(TEMPE|PICO)$/i, "");
 }
 
 function setStatus(message, isError = false, isSuccess = false) {
