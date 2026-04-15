@@ -33,6 +33,7 @@ Supported time formats:
 
 - Numeric seconds (example: `12.5`)
 - Broadcast timecode `HH:MM:SS;FF` (drop-frame, 59.94 fps)
+- Broadcast-style entry `HH:MM:SS:FF` is also accepted in Step 2 input
 - `MM:SS(.mmm)`
 - `HH:MM:SS(.mmm)`
 
