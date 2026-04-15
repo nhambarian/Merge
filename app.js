@@ -736,9 +736,7 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
   const xml1Prefix = xml1File.points.filter((point) =>
     isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
   );
-  const xml2Suffix = xml2File.points.filter((point) =>
-    isWithinRelativeWindow(point.time, xml2WindowStart, xml2WindowEnd)
-  );
+  const xml2Suffix = selectXml2PointsFromCut(xml2File.points, xml2WindowStart, xml2WindowEnd);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -768,6 +766,25 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
     xml2Count: xml2Suffix.length,
     filteredXml2Count: xml2File.points.length - xml2Suffix.length,
   };
+}
+
+function selectXml2PointsFromCut(points, windowStart, windowEnd) {
+  const firstExplicitAtOrAfterCut = points.findIndex(
+    (point) => point.explicitTime && point.time >= windowStart
+  );
+  const firstExplicitInWindow = points.findIndex(
+    (point) => point.explicitTime && isWithinRelativeWindow(point.time, windowStart, windowEnd)
+  );
+  const startIndex =
+    firstExplicitAtOrAfterCut !== -1 ? firstExplicitAtOrAfterCut : firstExplicitInWindow;
+
+  if (startIndex === -1) {
+    return [];
+  }
+
+  return points
+    .slice(startIndex)
+    .filter((point) => isWithinRelativeWindow(point.time, windowStart, windowEnd));
 }
 
 function isWithinRelativeWindow(timeValue, startInclusive, endExclusive) {
