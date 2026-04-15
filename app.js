@@ -190,6 +190,7 @@ function tryParseBxfAsRun(doc) {
   const points = asRunNodes.map((node, index) => {
     const startTimecode = findAsRunStartTimecode(node);
     const absoluteStart = startTimecode ? parseFlexibleTime(startTimecode) : null;
+    const zeroTimecode = isZeroTimecode(startTimecode);
     const relativeStart =
       absoluteStart === null
         ? null
@@ -199,12 +200,13 @@ function tryParseBxfAsRun(doc) {
 
     return {
       time: relativeStart,
-      explicitTime: relativeStart !== null,
+      explicitTime: relativeStart !== null && !zeroTimecode,
       order: index,
       nodeName: node.tagName,
       xml: serializer.serializeToString(node),
       sourceNode: node,
       startTimecode,
+      zeroTimecode,
     };
   });
 
@@ -232,6 +234,10 @@ function findAsRunStartTimecode(asRunNode) {
     "AsRunDetail StartDateTime SmpteDateTime SmpteTimeCode, AsRunDetail StartDateTime SmpteTimeCode"
   );
   return match?.textContent?.trim() || "";
+}
+
+function isZeroSmpteTimecode(value) {
+  return value === "00:00:00;00" || value === "00:00:00:00";
 }
 
 function parseScheduleAnchorSeconds(scheduleStart) {
