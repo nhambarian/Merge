@@ -21,6 +21,7 @@ const elements = {
   xml2Meta: document.getElementById("xml2-meta"),
   insertionSlider: document.getElementById("insertion-slider"),
   insertionTime: document.getElementById("insertion-time"),
+  selectedTime: document.getElementById("selected-time"),
   applyTime: document.getElementById("apply-time"),
   timelineSummary: document.getElementById("timeline-summary"),
   mergeButton: document.getElementById("merge-button"),
@@ -417,6 +418,7 @@ function updateControls() {
 
   if (!ready) {
     elements.timelineSummary.textContent = "Upload both XML files to enable timeline alignment.";
+    elements.selectedTime.textContent = "Selected start time: --:--:--;--";
     return;
   }
 
@@ -426,12 +428,14 @@ function updateControls() {
   elements.insertionSlider.value = String(Math.min(state.insertionTime, duration1));
   state.insertionTime = Number(elements.insertionSlider.value);
   elements.insertionTime.value = formatTime(state.insertionTime);
+  updateSelectedTimeDisplay();
   renderTimelineSummary();
 }
 
 function onSliderChange() {
   state.insertionTime = Number(elements.insertionSlider.value);
   elements.insertionTime.value = formatTime(state.insertionTime);
+  updateSelectedTimeDisplay();
   renderTimelineSummary();
 }
 
@@ -450,8 +454,13 @@ function onApplyTime() {
   state.insertionTime = clamped;
   elements.insertionSlider.value = String(clamped);
   elements.insertionTime.value = formatTime(clamped);
+  updateSelectedTimeDisplay();
   renderTimelineSummary();
   setStatus(`Insertion time updated to ${formatTime(clamped)}.`, false);
+}
+
+function updateSelectedTimeDisplay() {
+  elements.selectedTime.textContent = `Selected start time: ${formatTime(state.insertionTime)}`;
 }
 
 function renderTimelineSummary() {
