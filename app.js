@@ -670,10 +670,7 @@ function generateMergePreview() {
     state.mergedSegments = merged.previewSources;
     renderPreview(merged.previewLines, merged.previewSources);
     elements.exportButton.disabled = false;
-    const previewNote =
-      merged.hiddenXml2PreviewCount > 0
-        ? ` (preview hidden placeholders: ${merged.hiddenXml2PreviewCount})`
-        : "";
+    const previewNote = merged.filteredXml2Count > 0 ? ` (filtered XML2 rows: ${merged.filteredXml2Count})` : "";
     setStatus(
       `Merged preview generated. XML1 entries: ${merged.xml1Count}; XML2 entries: ${merged.xml2Count}.${previewNote}`,
       false
@@ -718,8 +715,31 @@ function generateMergePreview() {
 }
 
 function buildBxfMergedResult(xml1File, xml2File, insertion) {
-  const xml1Prefix = xml1File.points.filter((point) => point.time < insertion);
-  const xml2Suffix = xml2File.points.filter((point) => point.time >= insertion);
+  const insertionClockSeconds = xml1File.hasAnchor
+    ? toAbsoluteClockSeconds(insertion, xml1File.anchorSeconds)
+    : insertion;
+
+  const xml1WindowStart = xml1File.hasAnchor
+    ? toRelativeScheduleSeconds(9 * 3600, xml1File.anchorSeconds)
+    : 9 * 3600;
+  const xml1WindowEnd = xml1File.hasAnchor
+    ? toRelativeScheduleSeconds(insertionClockSeconds, xml1File.anchorSeconds)
+    : insertion;
+
+  const xml2WindowStart = xml2File.hasAnchor
+    ? toRelativeScheduleSeconds(insertionClockSeconds, xml2File.anchorSeconds)
+    : insertion;
+  const xml2WindowEnd = xml2File.hasAnchor
+    ? toRelativeScheduleSeconds(9 * 3600, xml2File.anchorSeconds)
+    : 9 * 3600;
+
+  const xml1Prefix = xml1File.points.filter((point) =>
+    isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
+  );
+  const xml2Suffix = xml2File.points.filter(
+    (point) =>
+      point.explicitTime && isWithinRelativeWindow(point.time, xml2WindowStart, xml2WindowEnd)
+  );
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -739,8 +759,7 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
   });
 
   const exportXml = prettyPrintXml(new XMLSerializer().serializeToString(mergedDoc));
-  const previewXml2Points = xml2Suffix.filter((point) => !isHiddenPreviewPlaceholder(point));
-  const preview = buildBxfPreview(xml1File, xml1Prefix, previewXml2Points);
+  const preview = buildBxfPreview(xml1File, xml1Prefix, xml2Suffix);
 
   return {
     exportXml,
@@ -748,17 +767,18 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
     previewSources: preview.sources,
     xml1Count: xml1Prefix.length,
     xml2Count: xml2Suffix.length,
-    hiddenXml2PreviewCount: xml2Suffix.length - previewXml2Points.length,
+    filteredXml2Count: xml2File.points.length - xml2Suffix.length,
   };
 }
 
-function isHiddenPreviewPlaceholder(point) {
-  if (!point.zeroTimecode) {
-    return false;
+function isWithinRelativeWindow(timeValue, startInclusive, endExclusive) {
+  if (startInclusive === endExclusive) {
+    return true;
   }
-  const asRunType = point.asRunType || "";
-  const federalType = point.federalType || "";
-  return asRunType === "NonPrimary" || federalType === "AUTO";
+  if (startInclusive < endExclusive) {
+    return timeValue >= startInclusive && timeValue < endExclusive;
+  }
+  return timeValue >= startInclusive || timeValue < endExclusive;
 }
 
 function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints) {
