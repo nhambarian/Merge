@@ -648,8 +648,12 @@ function generateMergePreview() {
     state.mergedSegments = merged.previewSources;
     renderPreview(merged.previewLines, merged.previewSources);
     elements.exportButton.disabled = false;
+    const previewNote =
+      merged.hiddenXml2PreviewCount > 0
+        ? ` (preview hidden placeholders: ${merged.hiddenXml2PreviewCount})`
+        : "";
     setStatus(
-      `Merged preview generated. XML1 entries: ${merged.xml1Count}; XML2 entries: ${merged.xml2Count}.`,
+      `Merged preview generated. XML1 entries: ${merged.xml1Count}; XML2 entries: ${merged.xml2Count}.${previewNote}`,
       false
     );
     return;
@@ -713,7 +717,8 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
   });
 
   const exportXml = prettyPrintXml(new XMLSerializer().serializeToString(mergedDoc));
-  const preview = buildBxfPreview(mergedDoc, xml1Prefix.length, xml2Suffix.length);
+  const previewXml2Points = xml2Suffix.filter((point) => !isHiddenPreviewPlaceholder(point));
+  const preview = buildBxfPreview(xml1File, xml1Prefix, previewXml2Points);
 
   return {
     exportXml,
@@ -721,27 +726,46 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
     previewSources: preview.sources,
     xml1Count: xml1Prefix.length,
     xml2Count: xml2Suffix.length,
+    hiddenXml2PreviewCount: xml2Suffix.length - previewXml2Points.length,
   };
 }
 
-function buildBxfPreview(mergedDoc, xml1Count, xml2Count) {
-  const previewDoc = mergedDoc.cloneNode(true);
-  const schedule = findScheduleElement(previewDoc);
-  const asRunNodes = schedule
-    ? Array.from(schedule.children).filter((child) => child.tagName === "AsRun")
-    : [];
+function isHiddenPreviewPlaceholder(point) {
+  if (!point.zeroTimecode) {
+    return false;
+  }
+  const asRunType = point.asRunType || "";
+  const federalType = point.federalType || "";
+  return asRunType === "NonPrimary" || federalType === "AUTO";
+}
 
-  if (schedule && asRunNodes.length > 0) {
-    if (xml1Count > 0) {
-      schedule.insertBefore(previewDoc.createComment("SRC:XML1"), asRunNodes[0]);
-    }
-    if (xml2Count > 0) {
-      const xml2StartNode = asRunNodes[xml1Count] || null;
-      schedule.insertBefore(previewDoc.createComment("SRC:XML2"), xml2StartNode);
-    }
-    if (xml1Count === 0 && xml2Count > 0) {
-      schedule.insertBefore(previewDoc.createComment("SRC:XML2"), asRunNodes[0]);
-    }
+function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints) {
+  const previewDoc = xml1File.xmlDoc.cloneNode(true);
+  const schedule = findScheduleElement(previewDoc);
+  if (!schedule) {
+    return { lines: [], sources: [] };
+  }
+
+  Array.from(schedule.children)
+    .filter((child) => child.tagName === "AsRun")
+    .forEach((child) => child.remove());
+
+  if (xml1PreviewPoints.length > 0) {
+    schedule.appendChild(previewDoc.createComment("SRC:XML1"));
+  }
+  xml1PreviewPoints.forEach((point) => {
+    schedule.appendChild(previewDoc.importNode(point.sourceNode, true));
+  });
+
+  if (xml2PreviewPoints.length > 0) {
+    schedule.appendChild(previewDoc.createComment("SRC:XML2"));
+  }
+  xml2PreviewPoints.forEach((point) => {
+    schedule.appendChild(previewDoc.importNode(point.sourceNode, true));
+  });
+
+  if (xml1PreviewPoints.length === 0 && xml2PreviewPoints.length === 0) {
+    schedule.appendChild(previewDoc.createComment("No previewable AsRun events."));
   }
 
   const pretty = prettyPrintXml(new XMLSerializer().serializeToString(previewDoc));
@@ -751,11 +775,11 @@ function buildBxfPreview(mergedDoc, xml1Count, xml2Count) {
   let inAsRun = false;
 
   pretty.split("\n").forEach((line) => {
-    if (line.includes("<!--SRC:XML1-->")) {
+    if (line.includes("<!-- SRC:XML1 -->") || line.includes("<!--SRC:XML1-->")) {
       activeSource = "xml1";
       return;
     }
-    if (line.includes("<!--SRC:XML2-->")) {
+    if (line.includes("<!-- SRC:XML2 -->") || line.includes("<!--SRC:XML2-->")) {
       activeSource = "xml2";
       return;
     }
