@@ -787,7 +787,7 @@ function generateMergePreview() {
   const xml2Slice = state.xml2.points.filter(
     (point) => point.time >= insertion && point.time < insertionEnd
   );
-  const xml1Tail = state.xml1.points.filter((point) => point.time >= insertionEnd);
+  const xml1Tail = selectXml1ResumePoints(state.xml1.points, insertionEnd);
 
   const lines = ["<MergedXML>"];
   const sourceByLine = [""];
@@ -856,7 +856,10 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
     isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
   );
   const xml2Slice = selectXml2PointsFromCut(xml2File.points, xml2WindowStart, xml2WindowEnd);
-  const xml1Suffix = xml1File.points.filter((point) => point.time >= insertionEnd);
+  const xml1PrefixSet = new Set(xml1Prefix);
+  const xml1Suffix = selectXml1ResumePoints(xml1File.points, insertionEnd).filter(
+    (point) => !xml1PrefixSet.has(point)
+  );
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -890,6 +893,17 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
     xml1SuffixCount: xml1Suffix.length,
     filteredXml2Count: xml2File.points.length - xml2Slice.length,
   };
+}
+
+function selectXml1ResumePoints(points, resumeTime) {
+  const frameTolerance = 1 / BROADCAST_DF.frameRate;
+  const startIndex = points.findIndex(
+    (point) => point.explicitTime && point.time >= resumeTime - frameTolerance
+  );
+  if (startIndex === -1) {
+    return [];
+  }
+  return points.slice(startIndex);
 }
 
 function selectXml2PointsFromCut(points, windowStart, windowEnd) {
