@@ -2,6 +2,8 @@ const state = {
   xml1: null,
   xml2: null,
   insertionTime: 0,
+  insertionEndTime: 0,
+  endTimeInitialized: false,
   mergedText: "",
   mergedSegments: [],
 };
@@ -27,6 +29,10 @@ const elements = {
   insertionTime: document.getElementById("insertion-time"),
   selectedTimeDisplay: document.getElementById("selected-time-display"),
   applyTime: document.getElementById("apply-time"),
+  endSlider: document.getElementById("end-slider"),
+  endTime: document.getElementById("end-time"),
+  selectedEndDisplay: document.getElementById("selected-end-display"),
+  applyEndTime: document.getElementById("apply-end-time"),
   timelineSummary: document.getElementById("timeline-summary"),
   mergeButton: document.getElementById("merge-button"),
   exportButton: document.getElementById("export-button"),
@@ -42,6 +48,8 @@ function setup() {
   elements.xml2Input.addEventListener("change", (event) => handleInputChange(event, "xml2"));
   elements.insertionSlider.addEventListener("input", onSliderChange);
   elements.applyTime.addEventListener("click", onApplyTime);
+  elements.endSlider.addEventListener("input", onEndSliderChange);
+  elements.applyEndTime.addEventListener("click", onApplyEndTime);
   elements.mergeButton.addEventListener("click", generateMergePreview);
   elements.exportButton.addEventListener("click", exportMergedXml);
   updateSelectedTimeDisplay();
@@ -105,6 +113,9 @@ async function loadFile(file, target) {
   const rawText = await file.text();
   const parsed = parseXmlFile(rawText, file.name);
   state[target] = parsed;
+  if (target === "xml1") {
+    state.endTimeInitialized = false;
+  }
 
   updateFileMeta(target, parsed);
   markDropZoneLoaded(target);
@@ -582,6 +593,9 @@ function updateControls() {
   elements.insertionSlider.disabled = !ready;
   elements.insertionTime.disabled = !ready;
   elements.applyTime.disabled = !ready;
+  elements.endSlider.disabled = !ready;
+  elements.endTime.disabled = !ready;
+  elements.applyEndTime.disabled = !ready;
   elements.mergeButton.disabled = !ready;
 
   if (!ready) {
@@ -596,13 +610,42 @@ function updateControls() {
   elements.insertionSlider.value = String(Math.min(state.insertionTime, duration1));
   state.insertionTime = Number(elements.insertionSlider.value);
   elements.insertionTime.value = formatDisplayTime(state.insertionTime, state.xml1);
+
+  if (!state.endTimeInitialized) {
+    state.insertionEndTime = defaultEndRelative(state.xml1);
+    state.endTimeInitialized = true;
+  }
+  state.insertionEndTime = clampEndTime(state.insertionEndTime, state.insertionTime, duration1);
+  elements.endSlider.max = String(duration1);
+  elements.endSlider.step = "0.001";
+  elements.endSlider.value = String(state.insertionEndTime);
+  elements.endTime.value = formatDisplayTime(state.insertionEndTime, state.xml1);
+
   updateSelectedTimeDisplay();
   renderTimelineSummary();
 }
 
 function onSliderChange() {
   state.insertionTime = Number(elements.insertionSlider.value);
+  if (state.insertionEndTime < state.insertionTime) {
+    state.insertionEndTime = state.insertionTime;
+    elements.endSlider.value = String(state.insertionEndTime);
+    elements.endTime.value = formatDisplayTime(state.insertionEndTime, state.xml1);
+  }
   elements.insertionTime.value = formatDisplayTime(state.insertionTime, state.xml1);
+  updateSelectedTimeDisplay();
+  renderTimelineSummary();
+}
+
+function onEndSliderChange() {
+  const duration1 = Math.max(0, state.xml1?.duration || 0);
+  state.insertionEndTime = clampEndTime(
+    Number(elements.endSlider.value),
+    state.insertionTime,
+    duration1
+  );
+  elements.endSlider.value = String(state.insertionEndTime);
+  elements.endTime.value = formatDisplayTime(state.insertionEndTime, state.xml1);
   updateSelectedTimeDisplay();
   renderTimelineSummary();
 }
@@ -625,9 +668,61 @@ function onApplyTime() {
   state.insertionTime = clamped;
   elements.insertionSlider.value = String(clamped);
   elements.insertionTime.value = formatDisplayTime(clamped, state.xml1);
+  if (state.insertionEndTime < clamped) {
+    state.insertionEndTime = clamped;
+    elements.endSlider.value = String(clamped);
+    elements.endTime.value = formatDisplayTime(clamped, state.xml1);
+  }
   updateSelectedTimeDisplay();
   renderTimelineSummary();
-  setStatus(`Insertion time updated to ${formatDisplayTime(clamped, state.xml1)}.`, false);
+  setStatus(`Start time updated to ${formatDisplayTime(clamped, state.xml1)}.`, false);
+}
+
+function onApplyEndTime() {
+  if (!state.xml1) {
+    return;
+  }
+
+  const parsed = parseInsertionTime(elements.endTime.value, state.xml1);
+  if (parsed === null) {
+    setStatus(
+      "Invalid end time. Use HH:MM:SS;FF or HH:MM:SS:FF (59.94) or numeric seconds.",
+      true
+    );
+    return;
+  }
+
+  const duration1 = Math.max(0, state.xml1.duration);
+  if (parsed < state.insertionTime) {
+    setStatus("End time must be at or after the XML File 2 start time.", true);
+    elements.endTime.value = formatDisplayTime(state.insertionEndTime, state.xml1);
+    return;
+  }
+
+  const clamped = clampEndTime(parsed, state.insertionTime, duration1);
+  state.insertionEndTime = clamped;
+  state.endTimeInitialized = true;
+  elements.endSlider.value = String(clamped);
+  elements.endTime.value = formatDisplayTime(clamped, state.xml1);
+  updateSelectedTimeDisplay();
+  renderTimelineSummary();
+  setStatus(`End time updated to ${formatDisplayTime(clamped, state.xml1)}.`, false);
+}
+
+function defaultEndRelative(xml1File) {
+  const duration = Math.max(0, xml1File?.duration || 0);
+  const nineAm = xml1File?.hasAnchor
+    ? toRelativeScheduleSeconds(XML2_WINDOW_END_SECONDS, xml1File.anchorSeconds)
+    : XML2_WINDOW_END_SECONDS;
+  if (nineAm > state.insertionTime && nineAm <= duration) {
+    return nineAm;
+  }
+  return duration;
+}
+
+function clampEndTime(endTime, startTime, duration) {
+  const upper = Math.max(startTime, duration);
+  return Math.max(startTime, Math.min(endTime, upper));
 }
 
 function updateSelectedTimeDisplay() {
@@ -636,9 +731,15 @@ function updateSelectedTimeDisplay() {
   }
   if (!state.xml1) {
     elements.selectedTimeDisplay.textContent = "--:--:--;--";
+    if (elements.selectedEndDisplay) {
+      elements.selectedEndDisplay.textContent = "--:--:--;--";
+    }
     return;
   }
   elements.selectedTimeDisplay.textContent = formatDisplayTime(state.insertionTime, state.xml1);
+  if (elements.selectedEndDisplay) {
+    elements.selectedEndDisplay.textContent = formatDisplayTime(state.insertionEndTime, state.xml1);
+  }
 }
 
 function renderTimelineSummary() {
@@ -646,16 +747,13 @@ function renderTimelineSummary() {
     return;
   }
 
-  elements.timelineSummary.textContent = `XML File 1 timeline: ${formatDisplayTime(
-    0,
-    state.xml1
-  )} to ${formatDisplayTime(state.xml1.duration, state.xml1)} (${state.xml1.timelineMode === "timed" ? "explicit timestamps" : "auto sequence"}). XML File 2 timeline: ${formatDisplayTime(
-    0,
-    state.xml2
-  )} to ${formatDisplayTime(state.xml2.duration, state.xml2)} (${state.xml2.timelineMode === "timed" ? "explicit timestamps" : "auto sequence"}). XML File 2 will start at ${formatDisplayTime(
+  elements.timelineSummary.textContent = `XML File 1 runs until ${formatDisplayTime(
     state.insertionTime,
     state.xml1
-  )}.`;
+  )}. XML File 2 is inserted until ${formatDisplayTime(
+    state.insertionEndTime,
+    state.xml1
+  )}. XML File 1 then continues through ${formatDisplayTime(state.xml1.duration, state.xml1)}.`;
 }
 
 function generateMergePreview() {
@@ -665,27 +763,38 @@ function generateMergePreview() {
   }
 
   if (state.xml1.mode === "bxf-asrun" && state.xml2.mode === "bxf-asrun") {
-    const merged = buildBxfMergedResult(state.xml1, state.xml2, state.insertionTime);
+    const merged = buildBxfMergedResult(
+      state.xml1,
+      state.xml2,
+      state.insertionTime,
+      state.insertionEndTime
+    );
     state.mergedText = merged.exportXml;
     state.mergedSegments = merged.previewSources;
     renderPreview(merged.previewLines, merged.previewSources);
     elements.exportButton.disabled = false;
     const previewNote = merged.filteredXml2Count > 0 ? ` (filtered XML2 rows: ${merged.filteredXml2Count})` : "";
     setStatus(
-      `Merged preview generated. XML1 entries: ${merged.xml1Count}; XML2 entries: ${merged.xml2Count}.${previewNote}`,
+      `Merged preview generated. XML1 before insert: ${merged.xml1Count}; XML2 inserted: ${merged.xml2Count}; XML1 after end time: ${merged.xml1SuffixCount}.${previewNote}`,
       false
     );
     return;
   }
 
   const insertion = state.insertionTime;
+  const insertionEnd = state.insertionEndTime;
   const xml1Slice = state.xml1.points.filter((point) => point.time < insertion);
-  const xml2Suffix = state.xml2.points.filter((point) => point.time >= insertion);
+  const xml2Slice = state.xml2.points.filter(
+    (point) => point.time >= insertion && point.time < insertionEnd
+  );
+  const xml1Tail = state.xml1.points.filter((point) => point.time >= insertionEnd);
 
   const lines = ["<MergedXML>"];
   const sourceByLine = [""];
 
-  lines.push(`  <!-- XML2 starts at ${formatDisplayTime(insertion, state.xml1)} -->`);
+  lines.push(
+    `  <!-- XML2 insert ${formatDisplayTime(insertion, state.xml1)} to ${formatDisplayTime(insertionEnd, state.xml1)} -->`
+  );
   sourceByLine.push("");
 
   xml1Slice.forEach((point) => {
@@ -695,11 +804,18 @@ function generateMergePreview() {
     sourceByLine.push("xml1");
   });
 
-  xml2Suffix.forEach((point) => {
+  xml2Slice.forEach((point) => {
     lines.push(`  <!-- XML2 @ ${formatDisplayTime(point.time, state.xml2)} -->`);
     sourceByLine.push("xml2");
     lines.push(`  ${point.xml}`);
     sourceByLine.push("xml2");
+  });
+
+  xml1Tail.forEach((point) => {
+    lines.push(`  <!-- XML1 resumes @ ${formatDisplayTime(point.time, state.xml1)} -->`);
+    sourceByLine.push("xml1");
+    lines.push(`  ${point.xml}`);
+    sourceByLine.push("xml1");
   });
   lines.push("</MergedXML>");
   sourceByLine.push("");
@@ -709,19 +825,22 @@ function generateMergePreview() {
   renderPreview(lines, sourceByLine);
   elements.exportButton.disabled = false;
   setStatus(
-    `Merged preview generated. XML1 entries: ${xml1Slice.length}; XML2 entries: ${xml2Suffix.length}.`,
+    `Merged preview generated. XML1 before insert: ${xml1Slice.length}; XML2 inserted: ${xml2Slice.length}; XML1 after end time: ${xml1Tail.length}.`,
     false
   );
 }
 
-function buildBxfMergedResult(xml1File, xml2File, insertion) {
+function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
   const insertionClockSeconds = xml1File.hasAnchor
     ? toAbsoluteClockSeconds(insertion, xml1File.anchorSeconds)
     : insertion;
+  const endClockSeconds = xml1File.hasAnchor
+    ? toAbsoluteClockSeconds(insertionEnd, xml1File.anchorSeconds)
+    : insertionEnd;
 
   const xml1WindowStart = xml1File.hasAnchor
-    ? toRelativeScheduleSeconds(9 * 3600, xml1File.anchorSeconds)
-    : 9 * 3600;
+    ? toRelativeScheduleSeconds(XML1_WINDOW_START_SECONDS, xml1File.anchorSeconds)
+    : XML1_WINDOW_START_SECONDS;
   const xml1WindowEnd = xml1File.hasAnchor
     ? toRelativeScheduleSeconds(insertionClockSeconds, xml1File.anchorSeconds)
     : insertion;
@@ -730,13 +849,14 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
     ? toRelativeScheduleSeconds(insertionClockSeconds, xml2File.anchorSeconds)
     : insertion;
   const xml2WindowEnd = xml2File.hasAnchor
-    ? toRelativeScheduleSeconds(9 * 3600, xml2File.anchorSeconds)
-    : 9 * 3600;
+    ? toRelativeScheduleSeconds(endClockSeconds, xml2File.anchorSeconds)
+    : insertionEnd;
 
   const xml1Prefix = xml1File.points.filter((point) =>
     isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
   );
-  const xml2Suffix = selectXml2PointsFromCut(xml2File.points, xml2WindowStart, xml2WindowEnd);
+  const xml2Slice = selectXml2PointsFromCut(xml2File.points, xml2WindowStart, xml2WindowEnd);
+  const xml1Suffix = xml1File.points.filter((point) => point.time >= insertionEnd);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -751,20 +871,24 @@ function buildBxfMergedResult(xml1File, xml2File, insertion) {
   xml1Prefix.forEach((point) => {
     targetSchedule.appendChild(mergedDoc.importNode(point.sourceNode, true));
   });
-  xml2Suffix.forEach((point) => {
+  xml2Slice.forEach((point) => {
+    targetSchedule.appendChild(mergedDoc.importNode(point.sourceNode, true));
+  });
+  xml1Suffix.forEach((point) => {
     targetSchedule.appendChild(mergedDoc.importNode(point.sourceNode, true));
   });
 
   const exportXml = prettyPrintXml(new XMLSerializer().serializeToString(mergedDoc));
-  const preview = buildBxfPreview(xml1File, xml1Prefix, xml2Suffix);
+  const preview = buildBxfPreview(xml1File, xml1Prefix, xml2Slice, xml1Suffix);
 
   return {
     exportXml,
     previewLines: preview.lines,
     previewSources: preview.sources,
     xml1Count: xml1Prefix.length,
-    xml2Count: xml2Suffix.length,
-    filteredXml2Count: xml2File.points.length - xml2Suffix.length,
+    xml2Count: xml2Slice.length,
+    xml1SuffixCount: xml1Suffix.length,
+    filteredXml2Count: xml2File.points.length - xml2Slice.length,
   };
 }
 
@@ -797,7 +921,7 @@ function isWithinRelativeWindow(timeValue, startInclusive, endExclusive) {
   return timeValue >= startInclusive || timeValue < endExclusive;
 }
 
-function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints) {
+function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints, xml1ResumePoints = []) {
   const previewDoc = xml1File.xmlDoc.cloneNode(true);
   const schedule = findScheduleElement(previewDoc);
   if (!schedule) {
@@ -822,7 +946,14 @@ function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints) {
     schedule.appendChild(previewDoc.importNode(point.sourceNode, true));
   });
 
-  if (xml1PreviewPoints.length === 0 && xml2PreviewPoints.length === 0) {
+  if (xml1ResumePoints.length > 0) {
+    schedule.appendChild(previewDoc.createComment("SRC:XML1"));
+  }
+  xml1ResumePoints.forEach((point) => {
+    schedule.appendChild(previewDoc.importNode(point.sourceNode, true));
+  });
+
+  if (xml1PreviewPoints.length === 0 && xml2PreviewPoints.length === 0 && xml1ResumePoints.length === 0) {
     schedule.appendChild(previewDoc.createComment("No previewable AsRun events."));
   }
 

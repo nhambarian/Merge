@@ -141,9 +141,12 @@ body {
   cursor: grabbing;
 }
 
-.selected-time-display {
+.selected-time-display,
+.selected-time-window {
   margin-top: 0.55rem;
-  display: inline-block;
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1e3a8a;
@@ -151,6 +154,12 @@ body {
   padding: 0.35rem 0.55rem;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.end-time-controls {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
 }
 
 .time-input-row {

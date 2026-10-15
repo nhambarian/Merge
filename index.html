@@ -11,8 +11,8 @@
     <header class="hero">
       <h1>XML Merge Dashboard</h1>
       <p>
-        Drag and drop two XML files, choose when XML File 2 should start inside XML File 1,
-        preview the merged XML with source highlighting, and export the result.
+        Drag and drop two XML files, choose the start and end times for inserting XML File 2
+        into XML File 1, preview the merged XML with source highlighting, and export the result.
       </p>
     </header>
 
@@ -40,10 +40,10 @@
     </section>
 
     <section class="step-card" id="step-2">
-      <h2>Step 2: Choose when XML File 2 starts</h2>
+      <h2>Step 2: Choose when XML File 2 starts and ends</h2>
       <p class="step-help">
-        Select a time point inside XML File 1. XML File 1 is used from the beginning until this
-        time, then XML File 2 starts at this designated time and runs to the end of XML File 2.
+        XML File 1 is used until the start time. XML File 2 is inserted from that start time
+        until the end time. XML File 1 then continues from the end time through the end of XML File 1.
         Reference time uses broadcast drop-frame at 59.94 fps.
       </p>
 
@@ -63,7 +63,27 @@
             placeholder="HH:MM:SS;FF or HH:MM:SS:FF (59.94 DF)"
             disabled
           />
-          <button id="apply-time" type="button" disabled>Apply Time</button>
+          <button id="apply-time" type="button" disabled>Apply Start Time</button>
+        </div>
+      </div>
+
+      <div class="time-controls end-time-controls">
+        <label for="end-slider">End time</label>
+        <p class="slider-hint">Drag the blue dot to set when XML File 2 ends and XML File 1 resumes.</p>
+        <input type="range" id="end-slider" min="0" max="1" step="0.001" value="0" disabled />
+        <div class="selected-time-window">
+          <span>Selected end time</span>
+          <strong id="selected-end-display">00:00:00;00</strong>
+        </div>
+        <div class="time-input-row">
+          <input
+            type="text"
+            id="end-time"
+            value="00:00:00;00"
+            placeholder="HH:MM:SS;FF or HH:MM:SS:FF (59.94 DF)"
+            disabled
+          />
+          <button id="apply-end-time" type="button" disabled>Apply End Time</button>
         </div>
       </div>
 

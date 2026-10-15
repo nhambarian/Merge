@@ -39,8 +39,9 @@ Supported time formats:
 
 ## Merge behavior
 
-- XML File 1 is included from its beginning **up to the selected insertion time**
-- XML File 2 is then inserted starting at that designated time
+- XML File 1 is included from its beginning **up to the selected start time**
+- XML File 2 is inserted from that start time **until the selected end time**
+- XML File 1 then continues from the end time through the end of XML File 1
 - A preview window shows:
   - **Light blue** lines for XML File 1
   - **Light red** lines for XML File 2
