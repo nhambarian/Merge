@@ -16,8 +16,8 @@ const BROADCAST_DF = {
 };
 
 const DAY_SECONDS = 24 * 60 * 60;
-const XML1_WINDOW_START_SECONDS = 9 * 60 * 60;
 const XML2_WINDOW_END_SECONDS = 9 * 60 * 60;
+const DAY_WRAP_BACK_SECONDS = 30 * 60;
 
 const elements = {
   dropZones: document.querySelectorAll(".drop-zone"),
@@ -167,6 +167,7 @@ function parseXmlFile(xmlText, fileName) {
   }
 
   fillMissingPointTimes(points);
+  assignDirectTimeline(points);
   const duration = Math.max(...points.map((point) => point.time));
   const timelineMode = points.some((point) => point.explicitTime) ? "timed" : "synthetic";
 
@@ -213,6 +214,7 @@ function tryParseBxfAsRun(doc) {
 
     return {
       time: relativeStart,
+      clockSeconds: absoluteStart,
       explicitTime: relativeStart !== null && !zeroTimecode,
       order: index,
       nodeName: node.tagName,
@@ -224,6 +226,7 @@ function tryParseBxfAsRun(doc) {
   });
 
   fillMissingPointTimes(points);
+  assignBroadcastTimeline(points);
   const duration = Math.max(...points.map((point) => point.time));
   const timelineMode = points.some((point) => point.explicitTime) ? "timed" : "synthetic";
 
@@ -523,6 +526,11 @@ function looksLikeBroadcastTimecode(value) {
   return /^\d{1,2}:[0-5]\d:[0-5]\d[:;][0-5]\d$/.test(value.trim());
 }
 
+function parseBroadcastClock(value) {
+  const normalized = value.trim().replace(/:(\d{2})$/, ";$1");
+  return parseDropFrame59_94(normalized);
+}
+
 function parseInsertionTime(inputValue, parsedFile) {
   const value = inputValue.trim();
   if (!value) {
@@ -530,7 +538,7 @@ function parseInsertionTime(inputValue, parsedFile) {
   }
 
   if (parsedFile?.mode === "bxf-asrun" && parsedFile.hasAnchor && looksLikeBroadcastTimecode(value)) {
-    const absolute = parseDropFrame59_94(value);
+    const absolute = parseBroadcastClock(value);
     if (absolute === null) {
       return null;
     }
@@ -773,9 +781,8 @@ function generateMergePreview() {
     state.mergedSegments = merged.previewSources;
     renderPreview(merged.previewLines, merged.previewSources);
     elements.exportButton.disabled = false;
-    const previewNote = merged.filteredXml2Count > 0 ? ` (filtered XML2 rows: ${merged.filteredXml2Count})` : "";
     setStatus(
-      `Merged preview generated. XML1 before insert: ${merged.xml1Count}; XML2 inserted: ${merged.xml2Count}; XML1 after end time: ${merged.xml1SuffixCount}.${previewNote}`,
+      `Merged preview generated. XML1 before insert: ${merged.xml1Count}; XML2 inserted: ${merged.xml2Count}; XML1 after end time: ${merged.xml1SuffixCount}.`,
       false
     );
     return;
@@ -783,11 +790,13 @@ function generateMergePreview() {
 
   const insertion = state.insertionTime;
   const insertionEnd = state.insertionEndTime;
-  const xml1Slice = state.xml1.points.filter((point) => point.time < insertion);
-  const xml2Slice = state.xml2.points.filter(
-    (point) => point.time >= insertion && point.time < insertionEnd
-  );
-  const xml1Tail = selectXml1ResumePoints(state.xml1.points, insertionEnd);
+  const xml1StartCut = findCutIndex(state.xml1.points, insertion);
+  const xml1EndCut = Math.max(xml1StartCut, findCutIndex(state.xml1.points, insertionEnd));
+  const xml2StartCut = findCutIndex(state.xml2.points, insertion);
+  const xml2EndCut = Math.max(xml2StartCut, findCutIndex(state.xml2.points, insertionEnd));
+  const xml1Slice = state.xml1.points.slice(0, xml1StartCut);
+  const xml2Slice = state.xml2.points.slice(xml2StartCut, xml2EndCut);
+  const xml1Tail = state.xml1.points.slice(xml1EndCut);
 
   const lines = ["<MergedXML>"];
   const sourceByLine = [""];
@@ -838,28 +847,16 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
     ? toAbsoluteClockSeconds(insertionEnd, xml1File.anchorSeconds)
     : insertionEnd;
 
-  const xml1WindowStart = xml1File.hasAnchor
-    ? toRelativeScheduleSeconds(XML1_WINDOW_START_SECONDS, xml1File.anchorSeconds)
-    : XML1_WINDOW_START_SECONDS;
-  const xml1WindowEnd = xml1File.hasAnchor
-    ? toRelativeScheduleSeconds(insertionClockSeconds, xml1File.anchorSeconds)
-    : insertion;
+  const xml1Window = resolveTimelineWindow(insertionClockSeconds, endClockSeconds, xml1File.points);
+  const xml2Window = resolveTimelineWindow(insertionClockSeconds, endClockSeconds, xml2File.points);
 
-  const xml2WindowStart = xml2File.hasAnchor
-    ? toRelativeScheduleSeconds(insertionClockSeconds, xml2File.anchorSeconds)
-    : insertion;
-  const xml2WindowEnd = xml2File.hasAnchor
-    ? toRelativeScheduleSeconds(endClockSeconds, xml2File.anchorSeconds)
-    : insertionEnd;
-
-  const xml1Prefix = xml1File.points.filter((point) =>
-    isWithinRelativeWindow(point.time, xml1WindowStart, xml1WindowEnd)
-  );
-  const xml2Slice = selectXml2PointsFromCut(xml2File.points, xml2WindowStart, xml2WindowEnd);
-  const xml1PrefixSet = new Set(xml1Prefix);
-  const xml1Suffix = selectXml1ResumePoints(xml1File.points, insertionEnd).filter(
-    (point) => !xml1PrefixSet.has(point)
-  );
+  const xml1StartCut = findCutIndex(xml1File.points, xml1Window.start);
+  const xml1EndCut = Math.max(xml1StartCut, findCutIndex(xml1File.points, xml1Window.end));
+  const xml2StartCut = findCutIndex(xml2File.points, xml2Window.start);
+  const xml2EndCut = Math.max(xml2StartCut, findCutIndex(xml2File.points, xml2Window.end));
+  const xml1Prefix = xml1File.points.slice(0, xml1StartCut);
+  const xml2Slice = xml2File.points.slice(xml2StartCut, xml2EndCut);
+  const xml1Suffix = xml1File.points.slice(xml1EndCut);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -891,48 +888,94 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
     xml1Count: xml1Prefix.length,
     xml2Count: xml2Slice.length,
     xml1SuffixCount: xml1Suffix.length,
-    filteredXml2Count: xml2File.points.length - xml2Slice.length,
   };
 }
 
-function selectXml1ResumePoints(points, resumeTime) {
+function assignDirectTimeline(points) {
+  points.forEach((point) => {
+    point.clockSeconds = Number.isFinite(point.time) ? point.time : null;
+    point.timeline = point.clockSeconds;
+  });
+}
+
+function assignBroadcastTimeline(points) {
+  let dayOffset = 0;
+  let lastClock = null;
+  let lastTimeline = null;
+
+  points.forEach((point) => {
+    if (!point.explicitTime || !Number.isFinite(point.clockSeconds)) {
+      point.timeline = lastTimeline;
+      return;
+    }
+
+    const clock = normalizeDaySeconds(point.clockSeconds);
+    if (lastClock !== null && lastClock - clock > DAY_WRAP_BACK_SECONDS) {
+      dayOffset += DAY_SECONDS;
+    }
+    point.timeline = clock + dayOffset;
+    lastClock = clock;
+    lastTimeline = point.timeline;
+  });
+}
+
+function placeBoundaryOnTimeline(clockSeconds, points) {
   const frameTolerance = 1 / BROADCAST_DF.frameRate;
-  const startIndex = points.findIndex(
-    (point) => point.explicitTime && point.time >= resumeTime - frameTolerance
-  );
-  if (startIndex === -1) {
-    return [];
+  const normalized = normalizeDaySeconds(clockSeconds);
+  const explicit = points.filter((point) => point.explicitTime && Number.isFinite(point.timeline));
+  if (explicit.length === 0) {
+    return normalized;
   }
-  return points.slice(startIndex);
+
+  const first = explicit[0].timeline;
+  const last = explicit[explicit.length - 1].timeline;
+  const candidates = [0, 1, 2].map((day) => normalized + day * DAY_SECONDS);
+  const inside = candidates.find(
+    (candidate) => candidate >= first - frameTolerance && candidate <= last + frameTolerance
+  );
+  if (inside !== undefined) {
+    return inside;
+  }
+
+  const before = candidates
+    .filter((candidate) => candidate < first)
+    .sort((left, right) => right - left)[0];
+  if (before !== undefined) {
+    return before;
+  }
+
+  const after = candidates
+    .filter((candidate) => candidate > last)
+    .sort((left, right) => left - right)[0];
+  return after !== undefined ? after : normalized;
 }
 
-function selectXml2PointsFromCut(points, windowStart, windowEnd) {
-  const firstExplicitAtOrAfterCut = points.findIndex(
-    (point) => point.explicitTime && point.time >= windowStart
-  );
-  const firstExplicitInWindow = points.findIndex(
-    (point) => point.explicitTime && isWithinRelativeWindow(point.time, windowStart, windowEnd)
-  );
-  const startIndex =
-    firstExplicitAtOrAfterCut !== -1 ? firstExplicitAtOrAfterCut : firstExplicitInWindow;
-
-  if (startIndex === -1) {
-    return [];
+function resolveTimelineWindow(startClock, endClock, points) {
+  const frameTolerance = 1 / BROADCAST_DF.frameRate;
+  const start = placeBoundaryOnTimeline(startClock, points);
+  let end = placeBoundaryOnTimeline(endClock, points);
+  if (end + frameTolerance < start) {
+    end += DAY_SECONDS;
   }
-
-  return points
-    .slice(startIndex)
-    .filter((point) => isWithinRelativeWindow(point.time, windowStart, windowEnd));
+  return { start, end };
 }
 
-function isWithinRelativeWindow(timeValue, startInclusive, endExclusive) {
-  if (startInclusive === endExclusive) {
-    return true;
+function findCutIndex(points, boundaryTime) {
+  const frameTolerance = 1 / BROADCAST_DF.frameRate;
+  const threshold = boundaryTime - frameTolerance;
+  let carriedTime = null;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    if (!point.zeroTimecode && Number.isFinite(point.timeline)) {
+      carriedTime = point.timeline;
+    }
+    if (carriedTime !== null && carriedTime >= threshold) {
+      return index;
+    }
   }
-  if (startInclusive < endExclusive) {
-    return timeValue >= startInclusive && timeValue < endExclusive;
-  }
-  return timeValue >= startInclusive || timeValue < endExclusive;
+
+  return points.length;
 }
 
 function buildBxfPreview(xml1File, xml1PreviewPoints, xml2PreviewPoints, xml1ResumePoints = []) {
