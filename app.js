@@ -856,12 +856,12 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
   const xml1EndCut = Math.max(xml1StartCut, findCutIndex(xml1File.points, xml1Window.end));
   const xml2StartCut = findCutIndex(xml2File.points, xml2Window.start);
   const xml2EndCut = Math.max(xml2StartCut, findCutIndex(xml2File.points, xml2Window.end));
-  const xml1Prefix = xml1File.points.slice(0, xml1StartCut);
-  const xml1DuringInsert = xml1File.points
-    .slice(xml1StartCut, xml1EndCut)
-    .filter((point) => !isProgramBoundary(point));
-  const xml2Slice = xml2File.points.slice(untimedLeadInStart(xml2File.points, xml2StartCut), xml2EndCut);
-  const xml1Suffix = xml1DuringInsert.concat(xml1File.points.slice(xml1EndCut));
+  // 00:00:00;00 rows have no broadcast time of their own. They only introduce the
+  // next timed program, so a cut keeps that program and leaves the placeholder
+  // run behind. The replaced XML1 span is not copied back into the preview.
+  const xml1Prefix = xml1File.points.slice(0, untimedLeadInStart(xml1File.points, xml1StartCut));
+  const xml2Slice = xml2File.points.slice(xml2StartCut, untimedLeadInStart(xml2File.points, xml2EndCut));
+  const xml1Suffix = xml1File.points.slice(xml1EndCut);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -975,7 +975,7 @@ function untimedLeadInStart(points, cutIndex) {
   }
 
   let index = cutIndex;
-  while (index > 0 && !isProgramBoundary(points[index - 1])) {
+  while (index > 0 && !points[index - 1].explicitTime) {
     index -= 1;
   }
   return index;
