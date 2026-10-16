@@ -856,14 +856,11 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
   const xml1EndCut = Math.max(xml1StartCut, findCutIndex(xml1File.points, xml1Window.end));
   const xml2StartCut = findCutIndex(xml2File.points, xml2Window.start);
   const xml2EndCut = Math.max(xml2StartCut, findCutIndex(xml2File.points, xml2Window.end));
+  const xml2SliceStart = includeLeadingGraphics(xml2File.points, xml2StartCut);
+  const xml1SuffixStart = Math.max(xml1StartCut, includeLeadingGraphics(xml1File.points, xml1EndCut));
   const xml1Prefix = xml1File.points.slice(0, xml1StartCut);
-  const xml1KeptDuringInsert = xml1File.points
-    .slice(xml1StartCut, xml1EndCut)
-    .filter((point) => isNonPrimaryEvent(point));
-  const xml1Suffix = xml1KeptDuringInsert.concat(xml1File.points.slice(xml1EndCut));
-  const xml2Slice = xml2File.points.filter(
-    (point, index) => isNonPrimaryEvent(point) || (index >= xml2StartCut && index < xml2EndCut)
-  );
+  const xml2Slice = xml2File.points.slice(xml2SliceStart, xml2EndCut);
+  const xml1Suffix = xml1File.points.slice(xml1SuffixStart);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -967,12 +964,16 @@ function resolveTimelineWindow(startClock, endClock, points) {
   return { start, end };
 }
 
-function isNonPrimaryEvent(point) {
-  if (point?.nonPrimary) {
-    return true;
+function includeLeadingGraphics(points, cutIndex) {
+  if (cutIndex <= 0 || cutIndex >= points.length) {
+    return cutIndex;
   }
-  const typeText = point?.sourceNode?.querySelector("AsRunDetail Type, Type")?.textContent || "";
-  return typeText.trim().toLowerCase() === "nonprimary";
+
+  let index = cutIndex;
+  while (index > 0 && points[index - 1].nonPrimary) {
+    index -= 1;
+  }
+  return index;
 }
 
 function findCutIndex(points, boundaryTime) {
