@@ -205,6 +205,7 @@ function tryParseBxfAsRun(doc) {
     const startTimecode = findAsRunStartTimecode(node);
     const absoluteStart = startTimecode ? parseFlexibleTime(startTimecode) : null;
     const zeroTimecode = isZeroSmpteTimecode(startTimecode);
+    const asRunType = node.querySelector("AsRunDetail > Type")?.textContent?.trim() || "";
     const relativeStart =
       absoluteStart === null
         ? null
@@ -222,6 +223,7 @@ function tryParseBxfAsRun(doc) {
       sourceNode: node,
       startTimecode,
       zeroTimecode,
+      nonPrimary: asRunType.toLowerCase() === "nonprimary",
     };
   });
 
@@ -854,9 +856,11 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
   const xml1EndCut = Math.max(xml1StartCut, findCutIndex(xml1File.points, xml1Window.end));
   const xml2StartCut = findCutIndex(xml2File.points, xml2Window.start);
   const xml2EndCut = Math.max(xml2StartCut, findCutIndex(xml2File.points, xml2Window.end));
+  const xml2SliceStart = includeLeadingGraphics(xml2File.points, xml2StartCut);
+  const xml1SuffixStart = Math.max(xml1StartCut, includeLeadingGraphics(xml1File.points, xml1EndCut));
   const xml1Prefix = xml1File.points.slice(0, xml1StartCut);
-  const xml2Slice = xml2File.points.slice(xml2StartCut, xml2EndCut);
-  const xml1Suffix = xml1File.points.slice(xml1EndCut);
+  const xml2Slice = xml2File.points.slice(xml2SliceStart, xml2EndCut);
+  const xml1Suffix = xml1File.points.slice(xml1SuffixStart);
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -958,6 +962,18 @@ function resolveTimelineWindow(startClock, endClock, points) {
     end += DAY_SECONDS;
   }
   return { start, end };
+}
+
+function includeLeadingGraphics(points, cutIndex) {
+  if (cutIndex <= 0 || cutIndex >= points.length) {
+    return cutIndex;
+  }
+
+  let index = cutIndex;
+  while (index > 0 && points[index - 1].nonPrimary) {
+    index -= 1;
+  }
+  return index;
 }
 
 function findCutIndex(points, boundaryTime) {
