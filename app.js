@@ -856,11 +856,12 @@ function buildBxfMergedResult(xml1File, xml2File, insertion, insertionEnd) {
   const xml1EndCut = Math.max(xml1StartCut, findCutIndex(xml1File.points, xml1Window.end));
   const xml2StartCut = findCutIndex(xml2File.points, xml2Window.start);
   const xml2EndCut = Math.max(xml2StartCut, findCutIndex(xml2File.points, xml2Window.end));
-  const xml2SliceStart = includeLeadingGraphics(xml2File.points, xml2StartCut);
-  const xml1SuffixStart = Math.max(xml1StartCut, includeLeadingGraphics(xml1File.points, xml1EndCut));
   const xml1Prefix = xml1File.points.slice(0, xml1StartCut);
-  const xml2Slice = xml2File.points.slice(xml2SliceStart, xml2EndCut);
-  const xml1Suffix = xml1File.points.slice(xml1SuffixStart);
+  const xml1DuringInsert = xml1File.points
+    .slice(xml1StartCut, xml1EndCut)
+    .filter((point) => !isProgramBoundary(point));
+  const xml2Slice = xml2File.points.slice(untimedLeadInStart(xml2File.points, xml2StartCut), xml2EndCut);
+  const xml1Suffix = xml1DuringInsert.concat(xml1File.points.slice(xml1EndCut));
 
   const mergedDoc = xml1File.xmlDoc.cloneNode(true);
   const targetSchedule = findScheduleElement(mergedDoc);
@@ -964,13 +965,17 @@ function resolveTimelineWindow(startClock, endClock, points) {
   return { start, end };
 }
 
-function includeLeadingGraphics(points, cutIndex) {
+function isProgramBoundary(point) {
+  return Boolean(point?.explicitTime) && !point?.nonPrimary && Number.isFinite(point?.timeline);
+}
+
+function untimedLeadInStart(points, cutIndex) {
   if (cutIndex <= 0 || cutIndex >= points.length) {
     return cutIndex;
   }
 
   let index = cutIndex;
-  while (index > 0 && points[index - 1].nonPrimary) {
+  while (index > 0 && !isProgramBoundary(points[index - 1])) {
     index -= 1;
   }
   return index;
@@ -979,14 +984,10 @@ function includeLeadingGraphics(points, cutIndex) {
 function findCutIndex(points, boundaryTime) {
   const frameTolerance = 1 / BROADCAST_DF.frameRate;
   const threshold = boundaryTime - frameTolerance;
-  let carriedTime = null;
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
-    if (!point.zeroTimecode && Number.isFinite(point.timeline)) {
-      carriedTime = point.timeline;
-    }
-    if (carriedTime !== null && carriedTime >= threshold) {
+    if (isProgramBoundary(point) && point.timeline >= threshold) {
       return index;
     }
   }
